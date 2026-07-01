@@ -1,0 +1,142 @@
+package PHASE1;
+
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+
+import javax.imageio.ImageIO;
+
+public class GreedyApproach {
+
+	// Computes the energy of an individual pixel using the Sobel operator
+		private static double calculatePixelEnergy(BufferedImage image, int x, int y) {
+	        int[][] brightness = new int[3][3];
+
+	        for (int i = -1; i <= 1; i++) {
+	            for (int j = -1; j <= 1; j++) {
+	                int X = x + i;
+	                int Y = y + j;
+
+	                // If the pixel is out of bounds assume it is black (brightness = 0)
+	                if (X < 0 || X >= image.getWidth() || Y < 0 || Y >= image.getHeight()) {
+	                    brightness[i + 1][j + 1] = 0;
+	                } else {
+	                    Color pixelColor = new Color(image.getRGB(X, Y));
+	                    brightness[i + 1][j + 1] = pixelColor.getRed() + pixelColor.getGreen() + pixelColor.getBlue();
+	                }
+	            }
+	        }
+
+	        // calculate energy using Sobel filter
+	        int xEnergy = brightness[0][0] + 2 * brightness[1][0] + brightness[2][0] - brightness[0][2] - 2 * brightness[1][2] - brightness[2][2];
+	        int yEnergy = brightness[0][0] + 2 * brightness[0][1] + brightness[0][2] - brightness[2][0] - 2 * brightness[2][1] - brightness[2][2];
+	        return Math.sqrt(xEnergy * xEnergy + yEnergy * yEnergy);
+	    }
+		
+		// calculates the energy matrix of an image
+	    public static double[][] calculateEnergyMatrix(BufferedImage image) {
+	        int width = image.getWidth(), height =image.getHeight();
+	        double[][] EnergyMatrix = new double[height][width];
+
+	        for (int i = 0; i < height; i++) {
+	            for (int j = 0; j < width; j++) {
+	                EnergyMatrix[i][j] = calculatePixelEnergy(image, j, i);
+	            }
+	        }
+	        return EnergyMatrix;
+	    }
+
+	    
+
+	    public static int[] MinEnergySeamGA(double[][] energyMatrix) {
+	        int height = energyMatrix.length;
+	        int width = energyMatrix[0].length;
+	        int[] seam = new int[height];
+
+	        // Start at minimum energy pixel in first row
+	        int startCol = 0;
+	        double min = Double.POSITIVE_INFINITY;
+	        for (int x = 0; x < width; x++) {
+	            if (energyMatrix[0][x] < min) {
+	                min = energyMatrix[0][x];
+	                startCol = x;
+	            }
+	        }
+	        seam[0] = startCol;
+
+	        // Choose local minimum neighbor for each next row
+	        int col = startCol;
+	        for (int y = 1; y < height; y++) {
+	            int bestCol = col;
+	            double bestEnergy = energyMatrix[y][col];
+
+	            if (col > 0 && energyMatrix[y][col-1] < bestEnergy) {
+	                bestEnergy = energyMatrix[y][col-1];
+	                bestCol = col-1;
+	            }
+	            if (col < width-1 && energyMatrix[y][col+1] < bestEnergy) {
+	                bestEnergy = energyMatrix[y][col+1];
+	                bestCol = col+1;
+	            }
+
+	            seam[y] = bestCol;
+	            col = bestCol;
+	        }
+
+	        return seam;
+	    }
+
+	 // Removes the identified seam from the image
+	    public static BufferedImage removeSeam(BufferedImage image, int[] seam) {
+	        int width = image.getWidth(), height = image.getHeight();
+	        BufferedImage newI = new BufferedImage(width - 1, height, image.getType());
+	        for (int y = 0; y < height; y++) {
+	            int seamColumn = 0;
+	            for (int x = 0; x < width; x++) {
+	                if (x != seam[y]) {
+	                	newI.setRGB(seamColumn, y, image.getRGB(x, y)); //shifts the pixels to fill the gap
+	                    seamColumn++;
+	                }
+	            }
+	        }
+	        return newI;
+	    }
+	    
+	    public static void main(String[] args) {
+	        try {
+	        	String imagePath = "C:\\Users\\Anfal\\Onedrive\\Desktop\\tower.jpg";
+
+	            File inputFile = new File(imagePath);
+	            BufferedImage image = ImageIO.read(inputFile);
+
+	            int seamsToRemove = 130; // Count of seams to remove
+	            for (int i = 0; i < seamsToRemove; i++) {
+	                double[][] energyMatrix = calculateEnergyMatrix(image);
+	                int[] seam = MinEnergySeamGA(energyMatrix);
+	                image = removeSeam(image, seam);
+	            }
+
+	            // Save the modified image to the desktop
+	            String outputImagePath = "C:\\Users\\Anfal\\Onedrive\\Desktop\\result.jpg";
+
+	            ImageIO.write(image, "jpg", new File(outputImagePath));
+
+	            System.out.println("Seam carving completed. Image saved at: " + outputImagePath);
+	        } catch (IOException e) {
+	            System.out.println("Error processing the image file.");
+	            e.printStackTrace();
+	        }
+	    }
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+}
