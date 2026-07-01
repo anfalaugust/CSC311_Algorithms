@@ -1,0 +1,256 @@
+package PHASE1;
+import  java.util.Scanner;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import javax.imageio.ImageIO;
+
+public class AlgorithmProject {
+
+    
+// Computes the energy of an individual pixel using the Sobel operator
+	private static double calculatePixelEnergy(BufferedImage image, int x, int y) {
+        int[][] brightness = new int[3][3];
+
+        for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
+                int X = x + i;
+                int Y = y + j;
+
+                // If the pixel is out of bounds assume it is black (brightness = 0)
+                if (X < 0 || X >= image.getWidth() || Y < 0 || Y >= image.getHeight()) {
+                    brightness[i + 1][j + 1] = 0;
+                } else {
+                    Color pixelColor = new Color(image.getRGB(X, Y));
+                    brightness[i + 1][j + 1] = pixelColor.getRed() + pixelColor.getGreen() + pixelColor.getBlue();
+                }
+            }
+        }
+
+        // calculate energy using Sobel filter
+        int xEnergy = brightness[0][0] + 2 * brightness[1][0] + brightness[2][0] - brightness[0][2] - 2 * brightness[1][2] - brightness[2][2];
+        int yEnergy = brightness[0][0] + 2 * brightness[0][1] + brightness[0][2] - brightness[2][0] - 2 * brightness[2][1] - brightness[2][2];
+        return Math.sqrt(xEnergy * xEnergy + yEnergy * yEnergy);
+    }
+	
+	
+ // calculates the energy matrix of an image
+    public static double[][] calculateEnergyMatrix(BufferedImage image) {
+        int width = image.getWidth(), height =image.getHeight();
+        double[][] EnergyMatrix = new double[height][width];
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                EnergyMatrix[i][j] = calculatePixelEnergy(image, j, i);
+            }
+        }
+        return EnergyMatrix;
+    }
+
+
+    // Identifies the vertical seam with the minimum energy using brute force
+    public static int[] MinEnergySeamBF(double[][] energyMatrix) {
+        int height = energyMatrix.length ,  width = energyMatrix[0].length;
+        int[] Seam = new int[height];
+        double minEnergy = Double.POSITIVE_INFINITY;
+
+        for (int i = 0; i < width; i++) {
+            int[] TMPseam = new int[height];
+            double seamEnergy = traceSeam(energyMatrix, i, 0, TMPseam);
+
+        // If this seam has lower energy or if the energy is the same but the seam starts further to the left
+        if (seamEnergy < minEnergy || (seamEnergy == minEnergy && i < Seam[0])) {
+            minEnergy = seamEnergy;
+            System.arraycopy(TMPseam, 0, Seam, 0, height);
+        }
+        }
+        return Seam;
+    }
+
+   
+    // Recursively traces the vertical seam with the lowest energy
+    private static double traceSeam(double[][] energyMatrix, int i, int j, int[] seam) {
+        int height = energyMatrix.length , width = energyMatrix[0].length;
+        seam[j] = i;
+        if (j == height - 1) {
+            return energyMatrix[j][i];
+        }
+
+        double minEnergy = Double.POSITIVE_INFINITY;
+        for (int dx = -1; dx <= 1; dx++) {
+            int nextI = i + dx;
+            if (nextI >= 0 && nextI < width) {
+                int[] TMPseam = new int[height];
+                System.arraycopy(seam, 0, TMPseam, 0, height);
+                double nextEnergy = traceSeam(energyMatrix, nextI, j + 1, TMPseam);
+
+                if (nextEnergy < minEnergy) {
+                    minEnergy = nextEnergy;
+                    System.arraycopy(TMPseam, 0, seam, 0, height); // updating the seam with the minimal energy 
+                }
+            }
+        }
+        return energyMatrix[j][i] + minEnergy;
+    }
+ // Identifies the vertical seam with the minimum energy using Dynamic programming
+    public static int[] MinEnergySeamDP(double[][] energyMatrix) {
+        int height = energyMatrix.length;
+        int width = energyMatrix[0].length;
+
+        double[][] dp = new double[height][width];
+        int[][] parent = new int[height][width];
+
+        // First row = same energy
+        for (int x = 0; x < width; x++) {
+            dp[0][x] = energyMatrix[0][x];
+        }
+
+        // Fill DP table
+        for (int y = 1; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                double minPrev = dp[y-1][x];
+                parent[y][x] = x;
+
+                if (x > 0 && dp[y-1][x-1] < minPrev) {
+                    minPrev = dp[y-1][x-1];
+                    parent[y][x] = x-1;
+                }
+                if (x < width-1 && dp[y-1][x+1] < minPrev) {
+                    minPrev = dp[y-1][x+1];
+                    parent[y][x] = x+1;
+                }
+
+                dp[y][x] = energyMatrix[y][x] + minPrev;
+            }
+        }
+
+        // Find minimum in last row
+        double minEnergy = Double.POSITIVE_INFINITY;
+        int bestLastCol = 0;
+        for (int x = 0; x < width; x++) {
+            if (dp[height-1][x] < minEnergy) {
+                minEnergy = dp[height-1][x];
+                bestLastCol = x;
+            }
+        }
+
+        // Reconstruct seam from bottom to top
+        int[] seam = new int[height];
+        int col = bestLastCol;
+        for (int y = height-1; y >= 0; y--) {
+            seam[y] = col;
+            col = parent[y][col];
+        }
+
+        return seam;
+    } 
+    
+ // Identifies the vertical seam with the minimum energy using greedy Approach
+    public static int[] MinEnergySeamGA(double[][] energyMatrix) {
+        int height = energyMatrix.length;
+        int width = energyMatrix[0].length;
+        int[] seam = new int[height];
+
+        // Start at minimum energy pixel in first row
+        int startCol = 0;
+        double min = Double.POSITIVE_INFINITY;
+        for (int x = 0; x < width; x++) {
+            if (energyMatrix[0][x] < min) {
+                min = energyMatrix[0][x];
+                startCol = x;
+            }
+        }
+        seam[0] = startCol;
+
+        // Choose local minimum neighbor for each next row
+        int col = startCol;
+        for (int y = 1; y < height; y++) {
+            int bestCol = col;
+            double bestEnergy = energyMatrix[y][col];
+
+            if (col > 0 && energyMatrix[y][col-1] < bestEnergy) {
+                bestEnergy = energyMatrix[y][col-1];
+                bestCol = col-1;
+            }
+            if (col < width-1 && energyMatrix[y][col+1] < bestEnergy) {
+                bestEnergy = energyMatrix[y][col+1];
+                bestCol = col+1;
+            }
+
+            seam[y] = bestCol;
+            col = bestCol;
+        }
+
+        return seam;
+    }
+
+    
+ 
+    
+    // Removes the identified seam from the image
+    public static BufferedImage removeSeam(BufferedImage image, int[] seam) {
+        int width = image.getWidth(), height = image.getHeight();
+        BufferedImage newI = new BufferedImage(width - 1, height, image.getType());
+        for (int y = 0; y < height; y++) {
+            int seamColumn = 0;
+            for (int x = 0; x < width; x++) {
+                if (x != seam[y]) {
+                	newI.setRGB(seamColumn, y, image.getRGB(x, y)); //shifts the pixels to fill the gap
+                    seamColumn++;
+                }
+            }
+        }
+        return newI;
+    }
+
+    public static void main(String[] args) {
+        try {
+            // Ask user for method choice
+            System.out.println("Choose seam carving method:");
+            System.out.println("1 - Brute Force");
+            System.out.println("2 - Dynamic Programming");
+            System.out.println("3 - Greedy Approach");
+            System.out.print("Enter your choice: ");
+
+            Scanner scanner = new Scanner(System.in);
+            int choice = scanner.nextInt();
+
+            String imagePath = "C:\\Users\\Anfal\\OneDrive\\Desktop\\dancers.jpg";
+            BufferedImage image = ImageIO.read(new File(imagePath));
+
+            System.out.print("Enter number of seams to remove: ");
+            int seamsToRemove = scanner.nextInt();
+
+            for (int i = 0; i < seamsToRemove; i++) {
+                double[][] energyMatrix = calculateEnergyMatrix(image);
+                int[] seam;
+
+                // Call selected seam method
+                if (choice == 1) {
+                    seam = MinEnergySeamBF(energyMatrix);
+                } else if (choice == 2) {
+                    seam = MinEnergySeamDP(energyMatrix);
+                } else if (choice == 3) {
+                    seam = MinEnergySeamGA(energyMatrix);
+                } else {
+                    System.out.println("Invalid choice! Defaulting to Dynamic Programming.");
+                    seam = MinEnergySeamDP(energyMatrix);
+                }
+
+                image = removeSeam(image, seam);
+            }
+
+            String outputPath = "C:\\Users\\Anfal\\OneDrive\\Desktop\\result.jpg";
+            ImageIO.write(image, "jpg", new File(outputPath));
+
+            System.out.println("Seams removed using method " + choice + ". Saved at: " + outputPath);
+            scanner.close();
+
+        } catch (IOException e) {
+            System.out.println("Error processing image.");
+            e.printStackTrace();
+        }
+    }
+
+} 
